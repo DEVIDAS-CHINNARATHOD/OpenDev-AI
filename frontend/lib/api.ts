@@ -1,28 +1,40 @@
 import { ActionResult, Issue, LogEntry, RepoDetails, RepoAnalysis } from "@/lib/types";
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
+function resolveApiUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (!raw) {
+    throw new Error("Missing NEXT_PUBLIC_API_URL in frontend .env.local");
+  }
+  return raw
+    .replace(/\/+$/, "")
+    .replace(/\/docs$/, "")
+    .replace(/\/openapi\.json$/, "");
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const apiUrl = resolveApiUrl();
   if (
     typeof window !== "undefined" &&
     !["localhost", "127.0.0.1"].includes(window.location.hostname) &&
-    API_URL.includes("localhost")
+    apiUrl.includes("localhost")
   ) {
     throw new Error("NEXT_PUBLIC_API_URL is still pointing to localhost. Update it to your deployed backend URL and redeploy.");
   }
+
+  const requestUrl = `${apiUrl}${path}`;
   let response: Response;
   try {
-    response = await fetch(`${API_URL}${path}`, {
+    response = await fetch(requestUrl, {
       ...init,
       headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
       cache: "no-store",
     });
   } catch {
-    throw new Error(`Unable to reach backend at ${API_URL}. Check NEXT_PUBLIC_API_URL and CORS settings.`);
+    throw new Error(`Unable to reach backend at ${apiUrl}. Check NEXT_PUBLIC_API_URL and CORS settings.`);
   }
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new Error(payload?.detail ?? `Request failed with status ${response.status}`);
+    throw new Error(payload?.detail ?? `Request failed with status ${response.status} for ${requestUrl}`);
   }
   return response.json();
 }
