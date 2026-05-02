@@ -8,14 +8,12 @@ import { ActionResult, Issue, LogEntry, RepoDetails, RepoAnalysis } from "@/lib/
 function resolveApiUrl(): string {
   const raw = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (!raw) {
-    throw new Error(
-      "NEXT_PUBLIC_API_URL is not set. " +
-      "Create frontend/.env.local with NEXT_PUBLIC_API_URL=<your-backend-url>"
-    );
+    throw new Error("Service is temporarily unavailable. Please try again later.");
   }
   return raw
-    .replace(/\/+$/, "")       // strip trailing slashes
-    .replace(/\/docs$/, "")    // strip /docs suffix if pasted from swagger
+    .replace(/\/+$/, "")            // strip trailing slashes
+    .replace(/\/api$/, "")          // strip /api suffix if accidentally added
+    .replace(/\/docs$/, "")         // strip /docs suffix if pasted from swagger
     .replace(/\/openapi\.json$/, "");
 }
 
@@ -29,16 +27,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
       cache: "no-store",
     });
-  } catch {
+  } catch (err) {
+    // Re-throw user-friendly errors from resolveApiUrl as-is
+    if (err instanceof Error && err.message.startsWith("Service is")) throw err;
     throw new Error(
-      `Cannot reach backend at ${apiUrl}. ` +
-      "Check NEXT_PUBLIC_API_URL and that the backend server is running."
+      "Something went wrong — please check your connection and try again."
     );
   }
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
+    // Use backend detail if it's a user-friendly message, otherwise use a generic one
+    const detail: string | undefined = payload?.detail;
+    const isUserFriendly = detail && !detail.includes("http") && !detail.includes("localhost") && detail.length < 300;
     throw new Error(
-      payload?.detail ?? `Request failed (${response.status}) for ${requestUrl}`
+      isUserFriendly ? detail : "Something went wrong on our end. Please try again in a moment."
     );
   }
   return response.json();
