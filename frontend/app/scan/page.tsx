@@ -29,7 +29,7 @@ export default function ScanPage() {
       <Panel title="No session" eyebrow="Security">
         <div className="space-y-4">
           <p className="font-mono text-sm text-muted">Load a repository first.</p>
-          <Link href="/" className="inline-flex rounded-full border-2 border-border bg-primary px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-border">
+          <Link href="/" className="inline-flex rounded-full border-2 border-border bg-primary px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-shadow-color">
             Go home
           </Link>
         </div>
@@ -80,7 +80,7 @@ export default function ScanPage() {
     s === "high" ? "danger" as const : s === "medium" ? "warning" as const : "neutral" as const;
 
   const gradeColor = (g: string) =>
-    g === "A" ? "text-[#15803d]" : g === "B" ? "text-primary" : g === "C" || g === "D" ? "text-[#b45309]" : "text-danger";
+    g === "A" ? "text-success" : g === "B" ? "text-primary" : g === "C" || g === "D" ? "text-accent" : "text-danger";
 
   return (
     <div className="space-y-6">
@@ -96,7 +96,7 @@ export default function ScanPage() {
                 type="button"
                 disabled={scanning}
                 onClick={handleScan}
-                className="rounded-full border-2 border-border bg-danger px-5 py-3 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-border transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:shadow-none disabled:opacity-60"
+                className="rounded-full border-2 border-border bg-danger px-5 py-3 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-shadow-color transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:shadow-none disabled:opacity-60"
               >
                 {scanning ? "Scanning repository…" : result ? "Re-scan" : "Run security scan"}
               </button>
@@ -106,25 +106,25 @@ export default function ScanPage() {
                   type="button"
                   disabled={creatingIssues}
                   onClick={handleCreateIssues}
-                  className="rounded-full border-2 border-border bg-accent px-5 py-3 font-mono text-sm uppercase tracking-[0.25em] text-text shadow-[4px_4px_0px_0px] shadow-border transition hover:-translate-x-0.5 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-full border-2 border-border bg-accent px-5 py-3 font-mono text-sm uppercase tracking-[0.25em] text-text shadow-[4px_4px_0px_0px] shadow-shadow-color transition hover:-translate-x-0.5 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {creatingIssues
                     ? "Creating GitHub issues…"
-                    : `📌 Create GitHub issues (${allFindings.filter(f => f.severity !== "low").length})`}
+                    : `Create GitHub issues (${allFindings.filter(f => f.severity !== "low").length})`}
                 </button>
               )}
             </div>
 
             {issuesCreated !== null && (
-              <p className="rounded-2xl border-2 border-[#15803d] bg-[#bbf7d0] p-3 font-mono text-sm text-[#15803d]">
+              <p className="rounded-2xl border-2 border-success bg-success-soft p-3 font-mono text-sm text-success">
                 ✓ Created {issuesCreated} GitHub issue{issuesCreated !== 1 ? "s" : ""} in {state.repo?.full_name}
               </p>
             )}
             {info && (
-              <p className="rounded-2xl border-2 border-border bg-white p-4 font-mono text-sm text-muted">{info}</p>
+              <p className="rounded-2xl border-2 border-border bg-card p-4 font-mono text-sm text-muted">{info}</p>
             )}
             {error && (
-              <p className="rounded-2xl border-2 border-danger bg-white p-4 font-mono text-sm text-danger">{error}</p>
+              <p className="rounded-2xl border-2 border-danger bg-card p-4 font-mono text-sm text-danger">{error}</p>
             )}
           </div>
         </Panel>
@@ -142,7 +142,7 @@ export default function ScanPage() {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 {(["high", "medium", "low"] as const).map((s) => (
-                  <div key={s} className="rounded-[16px] border-2 border-border bg-white p-3 text-center">
+                  <div key={s} className="rounded-[16px] border-2 border-border bg-card p-3 text-center">
                     <p className="text-2xl font-bold text-text">{score.by_severity[s]}</p>
                     <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted">{s}</p>
                   </div>
@@ -194,7 +194,7 @@ export default function ScanPage() {
         <Panel title="Findings by type" eyebrow="Breakdown">
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {Object.entries(score.by_type).map(([type, count]) => (
-              <div key={type} className="flex items-center justify-between rounded-[16px] border-2 border-border bg-white p-3">
+              <div key={type} className="flex items-center justify-between rounded-[16px] border-2 border-border bg-card p-3">
                 <span className="font-mono text-xs text-muted">{type.replace(/_/g, " ")}</span>
                 <span className="font-mono text-sm font-bold text-text">{count}</span>
               </div>
@@ -214,7 +214,7 @@ function FindingCard({
   sevTone: (s: string) => "danger" | "warning" | "neutral";
 }) {
   return (
-    <div className="rounded-[16px] border-2 border-border bg-white p-4 space-y-2">
+    <div className="rounded-[16px] border-2 border-border bg-card p-4 space-y-2">
       <div className="flex flex-wrap gap-2">
         <StatusPill label={f.severity} tone={sevTone(f.severity)} />
         <StatusPill label={f.type.replace(/_/g, " ")} tone="neutral" />

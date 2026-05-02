@@ -1,376 +1,245 @@
-# OpenDev AI — v4
+<div align="center">
 
-> Autonomous GitHub agent: understands code, fixes issues via fork PR, scans for secrets & vulnerabilities, and reviews pull requests — powered by Q-learning + LLMs.
+# OpenDev AI
 
----
+**Autonomous GitHub maintenance agent powered by LLMs + Reinforcement Learning**
 
-## Table of Contents
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue?style=flat-square)](https://www.python.org/)
+[![Next.js 14](https://img.shields.io/badge/Next.js-14-black?style=flat-square)](https://nextjs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-green?style=flat-square)](https://fastapi.tiangolo.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
-1. [How it works](#how-it-works)
-2. [Features](#features)
-3. [Project structure](#project-structure)
-4. [Prerequisites](#prerequisites)
-5. [Local development](#local-development)
-6. [Environment variables](#environment-variables)
-7. [Production deployment](#production-deployment)
-   - [Render (backend)](#render--backend)
-   - [Vercel (frontend)](#vercel--frontend)
-   - [Docker Compose (self-hosted)](#docker-compose--self-hosted)
-8. [API reference](#api-reference)
-9. [Troubleshooting](#troubleshooting)
+</div>
 
 ---
 
-## How it works
+## Overview
+
+OpenDev AI is an autonomous software maintenance platform that connects to any GitHub repository and performs:
+
+- **Security scanning** — 25+ vulnerability patterns (OWASP Top 10, secrets, misconfigurations)
+- **Automated issue fixing** — forks the repo, applies an LLM-generated patch, runs tests, opens a PR
+- **Pull request review** — AI-powered analysis with MERGE / REQUEST\_CHANGES / COMMENT recommendations
+- **Duplicate-safe issue creation** — opens labelled GitHub issues with remediation guidance
+
+Everything is observable in real-time through a live log terminal in the browser UI.
+
+---
+
+## Architecture
 
 ```
-User pastes GitHub URL
-        │
-        ▼
-  /repo  →  clone + analyze codebase
-             (language, frameworks, quality score)
-        │
-  ┌─────┴─────┐
-  │           │
-Issues?      No issues?
-  │           │
-  ▼           ▼
-/issues    /scan  →  vuln scan + secret scan
-  │           │       (Firebase, MongoDB, AWS,
-  │           │        .env files, private keys…)
-  ▼           ▼
-Fork repo   Create GitHub issues for findings
-Clone fork
-LLM patch
-Run tests
-        │
-        ▼
-  /approval  →  you review diff → Approve
-                                      │
-                                      ▼
-                              push to fork
-                              cross-fork PR → original owner
-
-/pr-review  →  paste any PR URL + number
-               LLM analyses diff, files, commits
-               recommendation: MERGE / REQUEST_CHANGES / COMMENT
-               optional: post review comment to GitHub
-```
-
----
-
-## Features
-
-| Feature | Details |
-|---|---|
-| **Repo Analysis** | Detects language, frameworks (Next.js, Django, Flutter…), tech stack, code quality grade |
-| **Fork & Fix** | Forks repo → LLM patch → tests → cross-fork PR to original owner |
-| **Security Scan** | SQL injection, XSS, eval(), command injection, path traversal, 25+ secret types |
-| **Secret Detection** | AWS/GCP/Azure keys, GitHub tokens, Firebase config, MongoDB URIs, Supabase keys, OpenAI keys, private keys, `.env` files (skips `.env.example`) |
-| **Scan → Issues** | One click opens GitHub issues for every finding with severity labels |
-| **PR Reviewer** | AI reviews any PR: bugs, security, style, logic — with merge recommendation |
-| **Q-learning RL** | Learns which fix strategy works best; Q-table persists across sessions |
-| **Review Gate** | Every fix requires your approval before pushing |
-
----
-
-## Project structure
-
-```
-OpenDev-AI/
-├── backend/
-│   ├── main.py              # FastAPI app — all endpoints
-│   ├── agent.py             # Orchestrates full workflow
-│   ├── repo_analyzer.py     # Codebase analysis (NEW)
-│   ├── pr_reviewer.py       # PR review engine (NEW)
-│   ├── scanner.py           # Vulnerability scanner
-│   ├── secret_scanner.py    # Secret/credential scanner
-│   ├── issue_analyzer.py    # LLM issue classifier
-│   ├── github_service.py    # GitHub API (fork, PR, create-issues)
-│   ├── llm.py               # Gemini + Groq
-│   ├── executor.py          # Patch application + test runner
-│   ├── rl_agent.py          # Q-learning agent
-│   ├── rules.py             # Vuln type → fix strategy mapping
-│   ├── reward.py            # Reward calculator
-│   ├── config.py            # Settings from .env
-│   ├── requirements.txt
-│   └── .env.example
-└── frontend/
-    ├── app/
-    │   ├── page.tsx          # Home — repo URL input
-    │   ├── analyze/          # Repo analysis dashboard
-    │   ├── issues/           # Issue list + fork-fix
-    │   ├── scan/             # Security scan + create-issues
-    │   ├── pr-review/        # PR reviewer
-    │   ├── logs/             # Live execution logs
-    │   ├── result/           # Action result + diff
-    │   └── approval/         # Approve/reject staged PR
-    ├── components/
-    │   ├── app-shell.tsx     # Nav + header
-    │   └── session-provider.tsx
-    └── lib/
-        ├── api.ts            # All API calls typed
-        └── types.ts          # Full TypeScript types
+┌─────────────────────────────────────────────────────────────────┐
+│                        Browser (Next.js 14)                     │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────┐  │
+│  │ Analyze  │ │  Issues  │ │   Scan   │ │   PR Review      │  │
+│  │  page    │ │   page   │ │   page   │ │   page           │  │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────────┬─────────┘  │
+│       └────────────┴────────────┴─────────────────┘            │
+│                        lib/api.ts (fetch)                       │
+│            NEXT_PUBLIC_API_URL from environment                 │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ HTTP / REST
+┌──────────────────────────▼──────────────────────────────────────┐
+│                    FastAPI Backend (Python 3.11)                 │
+│                                                                  │
+│  ┌─────────────┐  ┌───────────────┐  ┌─────────────────────┐  │
+│  │  agent.py   │  │  scanner.py   │  │  github_service.py  │  │
+│  │ orchestrator│  │ 25+ vuln types│  │  PyGithub wrapper   │  │
+│  └──────┬──────┘  └───────┬───────┘  └──────────┬──────────┘  │
+│         │                 │                       │              │
+│  ┌──────▼──────────────────▼───────────────────────▼─────────┐ │
+│  │                      llm.py                                │ │
+│  │        Claude (Anthropic)  →  Gemini  →  Groq              │ │
+│  │        Priority fallback chain with latency logging        │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+│  ┌────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
+│  │  rl_agent  │  │   executor   │  │   secret_scanner     │   │
+│  │ Q-learning │  │  CommandRun  │  │  40+ secret patterns │   │
+│  └────────────┘  └──────────────┘  └──────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+                 GitHub API (PyGithub)
 ```
 
 ---
 
-## Prerequisites
+## LLM Provider Chain
 
-| Requirement | Version | Purpose |
-|---|---|---|
-| Python | 3.11+ | Backend runtime |
-| Node.js | 18+ | Frontend build |
-| Git | any | Repo cloning in agent |
-| GitHub Token | classic PAT | API + fork + PR creation |
-| Gemini API key | — | Primary LLM (free tier) |
-| Groq API key | — | Fallback LLM (free tier) |
+| Priority | Provider | Model | Env Variable |
+|----------|----------|-------|--------------|
+| 1 | **Anthropic Claude** | `claude-sonnet-4-20250514` | `ANTHROPIC_API_KEY` |
+| 2 | **Google Gemini** | `gemini-2.0-flash` | `GEMINI_API_KEY` |
+| 3 | **Groq (Llama 3)** | `llama-3.3-70b-versatile` | `GROQ_API_KEY` |
 
-### GitHub token scopes
-
-Go to **GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)**
-
-Required scopes:
-- `repo` — full repo access (read, write, PR creation)
-- `workflow` — push workflow files
-- `read:org` — list org repos
+The system tries Claude first; if the key is absent or the call fails, it automatically falls back to Gemini, then Groq. Every attempt is logged with provider name and latency in milliseconds.
 
 ---
 
-## Local development
+## Security Scanning
 
-### 1. Extract and enter the project
+### Vulnerability Detection (25+ types)
+
+| Category | Types Detected |
+|----------|---------------|
+| Injection | SQL, NoSQL, LDAP, Command, Template (SSTI) |
+| XSS | `innerHTML`, `document.write`, `dangerouslySetInnerHTML`, `v-html` |
+| Code Execution | `eval()`, `exec()`, `new Function()`, pickle/yaml deserialization |
+| Web Security | SSRF, Open redirect, XXE, CORS misconfiguration, Prototype pollution |
+| Authentication | JWT bypass, Missing auth checks, IDOR, Insecure cookies |
+| Data | Path traversal, Mass assignment, Race conditions, File upload |
+| Cryptography | MD5/SHA1, `Math.random()` for crypto, DES |
+| Configuration | Debug mode in production, Hardcoded credentials |
+
+### Secret / Credential Detection (40+ patterns)
+
+AWS keys, GitHub tokens, Stripe keys, Firebase configs, MongoDB URIs, private keys, OpenAI/Anthropic API keys, and 30+ more.
+
+### Security Scoring
+
+Scores are calculated using a **deduction-based system** starting from 100:
+
+| Severity | Points Deducted per Finding |
+|----------|-----------------------------|
+| High | −15 |
+| Medium | −8 |
+| Low | −3 |
+
+**Grade scale:** A (90–100) · B (75–89) · C (60–74) · D (40–59) · F (0–39)
+
+**Scanned:** `.py`, `.js`, `.ts`, `.tsx`, `.jsx`, `.php`, `.rb`, `.java`, `.go`, `.cs`, `.sh` — files under 500 KB, excluding `node_modules`, `.git`, `dist`, `build`.
+
+---
+
+## Fix Pipeline
+
+When fixing a GitHub issue, the agent follows this pipeline:
+
+```
+1. Clone repo  →  2. LLM generates patch  →  3. Patch safety checks
+       ↓
+4. Apply patch  →  5. Run tests (npm/pytest)  →  6. Generate diff
+       ↓
+7. Human reviews diff + test results  →  8. Approve  →  9. Push + open PR
+```
+
+### Patch Safety Checks (pre-apply)
+
+| Check | Action |
+|-------|--------|
+| Delete `package.json`, `Dockerfile`, etc. | **Block** — raises error |
+| Patch removes > 60% of file lines | **Warn** — log + continue |
+| Patch removes > 3 import statements | **Warn** — log + continue |
+| Path traversal in file path | **Block** — raises error |
+
+### Automated Test Execution (post-apply)
+
+| Stack Detected | Command |
+|----------------|---------|
+| Node.js (`package.json` with `scripts.test`) | `npm install && npm test` |
+| Python (`pytest.ini`, `pyproject.toml`, `setup.py`) | `pytest` |
+| None detected | Skipped (noted in result) |
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.11+
+- Node.js 18+
+- GitHub Personal Access Token (`repo` scope)
+- At least one LLM provider API key
+
+### 1. Backend
 
 ```bash
-unzip OpenDev-AI-v4.zip
-cd OpenDev-AI
-```
+git clone https://github.com/DEVIDAS-CHINNARATHOD/OpenDev-AI.git
+cd OpenDev-AI/backend
 
-### 2. Backend
-
-```bash
-cd backend
-
-# Create virtual environment
-python3 -m venv .venv
+python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
-
-# Install dependencies
 pip install -r requirements.txt
 
-# Configure
-cp .env.example .env
-# Open .env and fill in:
-#   GITHUB_TOKEN=ghp_...
-#   GEMINI_API_KEY=...
-#   GROQ_API_KEY=...
-
-# Run
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+cp .env.example .env             # fill in your keys
+uvicorn main:app --reload --port 8000
 ```
 
-Backend: **http://localhost:8000**  
-Swagger: **http://localhost:8000/docs**
-
-### 3. Frontend
+### 2. Frontend
 
 ```bash
-cd frontend
-
-# Install dependencies
+cd ../frontend
 npm install
-
-# Configure
-cp .env.example .env.local
-# Set: NEXT_PUBLIC_API_URL=http://localhost:8000
-
-# Run
-npm run dev
+cp .env.local.example .env.local  # set NEXT_PUBLIC_API_URL
+npm run dev                        # open http://localhost:3000
 ```
-
-Frontend: **http://localhost:3000**
 
 ---
 
-## Environment variables
+## Environment Variables
 
 ### Backend (`backend/.env`)
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `GITHUB_TOKEN` | ✅ | — | GitHub classic PAT |
-| `GEMINI_API_KEY` | ⚠️ one required | — | Google Gemini API key |
-| `GROQ_API_KEY` | ⚠️ one required | — | Groq API key |
-| `GEMINI_MODEL` | ❌ | `gemini-2.0-flash` | Gemini model ID |
-| `GROQ_MODEL` | ❌ | `llama-3.3-70b-versatile` | Groq model ID |
-| `FRONTEND_ORIGIN` | ❌ | `http://localhost:3000` | CORS allowed origins (comma-separated) |
-| `FRONTEND_ORIGIN_REGEX` | ❌ | `https://.*\.vercel\.app` | Regex for Vercel preview URLs |
-| `GIT_AUTHOR_NAME` | ❌ | `OpenDev AI` | Git commit author name |
-| `GIT_AUTHOR_EMAIL` | ❌ | `opendev-ai@users.noreply.github.com` | Git commit email |
-| `COMMAND_TIMEOUT_SECONDS` | ❌ | `300` | Command timeout |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GITHUB_TOKEN` | Yes | GitHub PAT with `repo` scope |
+| `GIT_AUTHOR_NAME` | Yes | Commit author name |
+| `GIT_AUTHOR_EMAIL` | Yes | Commit author email |
+| `ANTHROPIC_API_KEY` | One LLM required | Claude API key (highest priority) |
+| `CLAUDE_MODEL` | No | Default: `claude-sonnet-4-20250514` |
+| `GEMINI_API_KEY` | One LLM required | Google Gemini API key |
+| `GEMINI_MODEL` | No | Default: `gemini-2.0-flash` |
+| `GROQ_API_KEY` | One LLM required | Groq API key (fallback) |
+| `GROQ_MODEL` | No | Default: `llama-3.3-70b-versatile` |
+| `FRONTEND_ORIGIN` | Production | Comma-separated allowed origins, e.g. `https://app.example.com` |
+| `FRONTEND_ORIGIN_REGEX` | Production | Regex for dynamic origins, e.g. `https://.*\.vercel\.app` |
+| `COMMAND_TIMEOUT_SECONDS` | No | Default: `300` |
 
 ### Frontend (`frontend/.env.local`)
 
 | Variable | Required | Description |
-|---|---|---|
-| `NEXT_PUBLIC_API_URL` | ✅ | Backend URL (e.g. `https://your-app.onrender.com`) |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_API_URL` | Yes | Backend URL, e.g. `https://api.example.com` |
 
 ---
 
-## Production deployment
+## Deployment
 
-### Render — backend
-
-1. Push the project to a GitHub repository
-
-2. Go to [render.com](https://render.com) → **New Web Service**
-
-3. Connect your repo and set:
-   - **Root directory:** `backend`
-   - **Runtime:** `Python 3`
-   - **Build command:** `pip install -r requirements.txt`
-   - **Start command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
-
-4. Under **Environment**, add all variables from the table above
-
-5. **Important:** Add a **Disk** (under Advanced) mounted at `/opt/render/project/src` with at least 1 GB to persist `q_table.json` across deploys
-
-6. Deploy — Render gives you a URL like `https://opendev-ai.onrender.com`
-
-> **Free tier note:** Render free instances sleep after 15 min of inactivity. Use the paid tier or add an uptime monitor.
-
----
-
-### Vercel — frontend
-
-1. Go to [vercel.com](https://vercel.com) → **New Project** → import your repo
-
-2. Set **Root Directory** to `frontend`
-
-3. Add environment variable:
-   ```
-   NEXT_PUBLIC_API_URL = https://your-backend.onrender.com
-   ```
-
-4. Deploy — Vercel handles the Next.js build automatically
-
-5. After deploy, copy your Vercel URL (e.g. `https://opendev-ai.vercel.app`) and add it to the backend's `FRONTEND_ORIGIN` variable on Render, then redeploy backend
-
----
-
-### Docker Compose — self-hosted
-
-Create `docker-compose.yml` in the project root:
-
-```yaml
-version: "3.9"
-
-services:
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
-      GITHUB_TOKEN: ${GITHUB_TOKEN}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      GROQ_API_KEY: ${GROQ_API_KEY}
-      FRONTEND_ORIGIN: http://localhost:3000
-    volumes:
-      - rl_data:/app
-
-  frontend:
-    build:
-      context: ./frontend
-      args:
-        NEXT_PUBLIC_API_URL: http://backend:8000
-    ports:
-      - "3000:3000"
-    depends_on:
-      - backend
-
-volumes:
-  rl_data:
-```
-
-Create `backend/Dockerfile`:
-
-```dockerfile
-FROM python:3.12-slim
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-Create `frontend/Dockerfile`:
-
-```dockerfile
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-RUN npm run build
-
-FROM node:20-alpine
-WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/public ./public
-RUN npm ci --omit=dev
-CMD ["npm", "start"]
-```
-
-Start:
+### Backend (Fly.io / Railway / Render)
 
 ```bash
-GITHUB_TOKEN=xxx GEMINI_API_KEY=xxx docker compose up --build
+# No localhost defaults exist — all config via env vars
+fly deploy                 # or: railway up
+```
+
+Required env vars in your platform dashboard:
+- `GITHUB_TOKEN`
+- At least one LLM key
+- `FRONTEND_ORIGIN` set to your production frontend URL
+
+### Frontend (Vercel / Netlify)
+
+Set in your platform's environment settings:
+
+```
+NEXT_PUBLIC_API_URL=https://your-backend.fly.dev
 ```
 
 ---
 
-## API reference
+## Tech Stack
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/repo` | Load repo + analyze codebase |
-| `GET` | `/issues` | List open GitHub issues + repo analysis |
-| `POST` | `/fork-fix` | Fork → LLM fix → staged PR |
-| `POST` | `/scan` | Deep security scan |
-| `POST` | `/create-issues` | Open GitHub issues for findings |
-| `POST` | `/pr-review` | AI PR review (+ optional post to GitHub) |
-| `POST` | `/approve` | Approve or reject staged PR |
-| `GET` | `/logs` | Live execution logs (poll every 3s) |
-| `GET` | `/security-score` | Cached score from last scan |
-| `GET` | `/rl-stats` | Q-learning stats + learned policy |
-| `POST` | `/pr-feedback` | Feed PR outcome to RL agent |
-| `POST` | `/terminate` | End session |
-| `GET` | `/health` | Health + config check |
-| `GET` | `/docs` | Swagger UI |
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 14 · React 18 · TypeScript · Tailwind CSS |
+| Backend | FastAPI · Python 3.11 · Uvicorn |
+| AI / LLM | Anthropic Claude · Google Gemini · Groq (Llama 3) |
+| GitHub | PyGithub · Git CLI |
+| Reinforcement Learning | Custom Q-learning agent |
 
 ---
 
-## Troubleshooting
+## License
 
-| Problem | Solution |
-|---|---|
-| `NEXT_PUBLIC_API_URL is still localhost` | Set the env var on Vercel and redeploy |
-| `GitHub client is not configured` | Check `GITHUB_TOKEN` in backend env |
-| `No LLM provider configured` | Set `GEMINI_API_KEY` or `GROQ_API_KEY` |
-| Fork PR returns 422 | Fork may already be ahead on the same branch; delete the fork branch manually |
-| `No changes were produced` | LLM returned empty `changes` — retry or switch model |
-| CORS error in browser | Add your Vercel URL to `FRONTEND_ORIGIN` in backend env |
-| Q-table not persisting on Render | Add a Disk at the build path |
-| Render backend is slow to start | It sleeps on free tier; upgrade or add uptime pinger |
-| `.env.example` flagged as secret | This is a bug — update to latest `secret_scanner.py` which explicitly skips safe template files |
-
----
-
-*OpenDev AI — Autonomous GitHub maintenance powered by LLMs and Q-learning.*
+MIT — see [LICENSE](LICENSE) for details.

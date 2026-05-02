@@ -1,26 +1,26 @@
 import { ActionResult, Issue, LogEntry, RepoDetails, RepoAnalysis } from "@/lib/types";
 
+/**
+ * Resolves the backend API URL exclusively from the NEXT_PUBLIC_API_URL
+ * environment variable. No hardcoded fallbacks — set this in .env.local
+ * (dev) or your hosting platform's env config (production).
+ */
 function resolveApiUrl(): string {
   const raw = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (!raw) {
-    throw new Error("Missing NEXT_PUBLIC_API_URL in frontend .env.local");
+    throw new Error(
+      "NEXT_PUBLIC_API_URL is not set. " +
+      "Create frontend/.env.local with NEXT_PUBLIC_API_URL=<your-backend-url>"
+    );
   }
   return raw
-    .replace(/\/+$/, "")
-    .replace(/\/docs$/, "")
+    .replace(/\/+$/, "")       // strip trailing slashes
+    .replace(/\/docs$/, "")    // strip /docs suffix if pasted from swagger
     .replace(/\/openapi\.json$/, "");
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const apiUrl = resolveApiUrl();
-  if (
-    typeof window !== "undefined" &&
-    !["localhost", "127.0.0.1"].includes(window.location.hostname) &&
-    apiUrl.includes("localhost")
-  ) {
-    throw new Error("NEXT_PUBLIC_API_URL is still pointing to localhost. Update it to your deployed backend URL and redeploy.");
-  }
-
   const requestUrl = `${apiUrl}${path}`;
   let response: Response;
   try {
@@ -30,16 +30,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       cache: "no-store",
     });
   } catch {
-    throw new Error(`Unable to reach backend at ${apiUrl}. Check NEXT_PUBLIC_API_URL and CORS settings.`);
+    throw new Error(
+      `Cannot reach backend at ${apiUrl}. ` +
+      "Check NEXT_PUBLIC_API_URL and that the backend server is running."
+    );
   }
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new Error(payload?.detail ?? `Request failed with status ${response.status} for ${requestUrl}`);
+    throw new Error(
+      payload?.detail ?? `Request failed (${response.status}) for ${requestUrl}`
+    );
   }
   return response.json();
 }
 
-// ── Response types ────────────────────────────────────────────────────────────
+// ── Response types ─────────────────────────────────────────────────────────────
 
 export type RepoResponse = {
   session_id: string;
@@ -71,6 +76,7 @@ export type CreateIssuesResponse = {
   }>;
   errors: string[];
   issues_created: number;
+  skipped_duplicates: number;
   total_findings: number;
 };
 
@@ -99,7 +105,7 @@ export type PRReviewResponse = {
   post_result: { posted?: boolean; error?: string };
 };
 
-// ── API functions ─────────────────────────────────────────────────────────────
+// ── API functions ──────────────────────────────────────────────────────────────
 
 export const createRepoSession = (repoUrl: string) =>
   request<RepoResponse>("/repo", { method: "POST", body: JSON.stringify({ repo_url: repoUrl }) });

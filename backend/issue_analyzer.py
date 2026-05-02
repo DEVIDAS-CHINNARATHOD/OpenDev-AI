@@ -159,7 +159,7 @@ def _classify_with_llm(llm_service: LLMService, issue: dict[str, Any]) -> dict[s
         '  "type":       "bug|security|performance|feature|documentation|dependency|configuration|test|style|unknown",\n'
         '  "severity":   "high|medium|low",\n'
         '  "summary":    "<one-sentence summary of what needs to be fixed>",\n'
-        '  "confidence": <float 0.0–1.0>\n'
+        '  "confidence": <float 0.0-1.0>\n'
         "}\n\n"
         f"Issue #{issue['number']}: {issue['title']}\n"
         f"Labels: {labels_str}\n"

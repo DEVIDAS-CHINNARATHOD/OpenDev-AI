@@ -10,13 +10,15 @@ export function StatusPill({ label, tone = "neutral" }: StatusPillProps) {
       : tone === "danger"
       ? "border-danger bg-danger text-white"
       : tone === "warning"
-      ? "border-[#b45309] bg-[#fbbf24] text-text"
+      ? "border-accent bg-accent-soft text-text"
       : tone === "success"
-      ? "border-[#15803d] bg-[#bbf7d0] text-text"
-      : "border-text bg-bg text-text";
+      ? "border-success bg-success-soft text-text"
+      : "border-border bg-card text-text";
 
   return (
-    <span className={`inline-flex border-2 px-3 py-1 font-mono text-xs uppercase tracking-[0.25em] ${cls}`}>
+    <span
+      className={`inline-flex rounded-full border-2 px-3 py-0.5 font-mono text-xs uppercase tracking-[0.15em] ${cls}`}
+    >
       {label}
     </span>
   );

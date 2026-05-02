@@ -5,24 +5,29 @@ type ApprovalActionsProps = {
   onReject: () => void;
 };
 
-export function ApprovalActions({ disabled, loading, onApprove, onReject }: ApprovalActionsProps) {
+export function ApprovalActions({
+  disabled,
+  loading,
+  onApprove,
+  onReject,
+}: ApprovalActionsProps) {
   return (
     <div className="flex flex-wrap gap-3">
       <button
         type="button"
         disabled={disabled || loading}
         onClick={onApprove}
-        className="border-2 border-primary bg-primary px-5 py-3 font-mono text-sm uppercase tracking-[0.25em] text-text disabled:cursor-not-allowed disabled:border-text disabled:bg-bg"
+        className="rounded-full border-2 border-primary bg-primary px-6 py-3 font-mono text-sm uppercase tracking-[0.15em] text-white shadow-[3px_3px_0px_0px] shadow-shadow-color transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
       >
-        {loading ? "Processing" : "Approve"}
+        {loading ? "Processing…" : "✓ Approve"}
       </button>
       <button
         type="button"
         disabled={disabled || loading}
         onClick={onReject}
-        className="border-2 border-danger bg-danger px-5 py-3 font-mono text-sm uppercase tracking-[0.25em] text-text disabled:cursor-not-allowed disabled:border-text disabled:bg-bg"
+        className="rounded-full border-2 border-danger bg-danger px-6 py-3 font-mono text-sm uppercase tracking-[0.15em] text-white shadow-[3px_3px_0px_0px] shadow-shadow-color transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
       >
-        Reject
+        ✗ Reject
       </button>
     </div>
   );

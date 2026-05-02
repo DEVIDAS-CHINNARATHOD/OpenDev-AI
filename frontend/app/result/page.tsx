@@ -27,7 +27,7 @@ export default function ResultPage() {
       <Panel title="No result available" eyebrow="Result">
         <div className="space-y-4 font-mono text-sm text-muted">
           <p>Run an issue fix or security scan first.</p>
-          <Link href="/issues" className="inline-flex rounded-full border-2 border-border bg-primary px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-border">
+          <Link href="/issues" className="inline-flex rounded-full border-2 border-border bg-primary px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-shadow-color">
             Go to issues
           </Link>
         </div>
@@ -54,7 +54,11 @@ export default function ResultPage() {
     setCreatingIssues(true);
     try {
       const r = await createIssuesFromFindings(state.sessionId);
-      setIssuesMsg(`✓ Created ${r.issues_created} GitHub issue${r.issues_created !== 1 ? "s" : ""}.`);
+      let msg = `✓ Created ${r.issues_created} GitHub issue${r.issues_created !== 1 ? "s" : ""}.`;
+      if (r.skipped_duplicates > 0) {
+        msg += ` Skipped ${r.skipped_duplicates} duplicate${r.skipped_duplicates !== 1 ? "s" : ""}.`;
+      }
+      setIssuesMsg(msg);
     } catch (err) {
       setIssuesMsg(err instanceof Error ? err.message : "Failed to create issues.");
     } finally {
@@ -71,6 +75,7 @@ export default function ResultPage() {
             <StatusPill label={result.action} tone="neutral" />
             <StatusPill label={result.status} tone={statusTone} />
             {result.fork && <StatusPill label={`fork: ${result.fork.full_name}`} tone="neutral" />}
+            {result.llm_provider && <StatusPill label={`LLM: ${result.llm_provider}`} tone="primary" />}
           </div>
           <p className="font-mono text-sm leading-7 text-muted">{result.summary}</p>
 
@@ -88,13 +93,13 @@ export default function ResultPage() {
               type="button"
               disabled={creatingIssues}
               onClick={handleCreateIssues}
-              className="rounded-full border-2 border-border bg-accent px-5 py-2 font-mono text-sm uppercase tracking-[0.25em] text-text shadow-[3px_3px_0px_0px] shadow-border transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-full border-2 border-border bg-accent px-5 py-2 font-mono text-sm uppercase tracking-[0.25em] text-text shadow-[3px_3px_0px_0px] shadow-shadow-color transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {creatingIssues ? "Creating GitHub issues…" : "📌 Create GitHub issues from findings"}
             </button>
           )}
           {issuesMsg && (
-            <p className="rounded-2xl border-2 border-[#15803d] bg-[#bbf7d0] p-3 font-mono text-sm text-[#15803d]">
+            <p className="rounded-2xl border-2 border-success bg-success-soft p-3 font-mono text-sm text-success">
               {issuesMsg}
             </p>
           )}
@@ -126,7 +131,7 @@ export default function ResultPage() {
         <Panel title="Test results" eyebrow="Validation">
           <div className="space-y-4">
             {result.test_results.map((item) => (
-              <div key={item.command} className="rounded-[20px] border-2 border-border bg-white p-4">
+              <div key={item.command} className="rounded-[20px] border-2 border-border bg-card p-4">
                 <div className="mb-3 flex flex-wrap gap-2">
                   <StatusPill label={item.command} tone="neutral" />
                   <StatusPill
@@ -150,7 +155,7 @@ export default function ResultPage() {
         <Panel title={`Security findings (${allFindings.length})`} eyebrow="Scan output">
           <div className="max-h-[32rem] space-y-3 overflow-y-auto pr-1">
             {allFindings.map((f) => (
-              <div key={f.id} className="rounded-[16px] border-2 border-border bg-white p-4 space-y-2">
+              <div key={f.id} className="rounded-[16px] border-2 border-border bg-card p-4 space-y-2">
                 <div className="flex flex-wrap gap-2">
                   <StatusPill label={f.type.replace(/_/g, " ")} tone={sevTone(f.severity)} />
                   <StatusPill label={f.severity} tone={sevTone(f.severity)} />
@@ -179,13 +184,13 @@ export default function ResultPage() {
 
       {/* Nav */}
       <div className="flex flex-wrap gap-3">
-        <Link href="/approval" className="rounded-full border-2 border-border bg-primary px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-border transition hover:-translate-y-0.5">
+        <Link href="/approval" className="rounded-full border-2 border-border bg-primary px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-shadow-color transition hover:-translate-y-0.5">
           Approval
         </Link>
-        <Link href="/logs" className="rounded-full border-2 border-border bg-white px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-text transition hover:-translate-y-0.5">
+        <Link href="/logs" className="rounded-full border-2 border-border bg-card px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-text transition hover:-translate-y-0.5">
           View logs
         </Link>
-        <Link href="/issues" className="rounded-full border-2 border-border bg-white px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-text transition hover:-translate-y-0.5">
+        <Link href="/issues" className="rounded-full border-2 border-border bg-card px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-text transition hover:-translate-y-0.5">
           Back to issues
         </Link>
       </div>

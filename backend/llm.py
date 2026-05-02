@@ -1,19 +1,24 @@
 """
-llm.py — LLM service for OpenDev AI.
+llm.py - LLM service for OpenDev AI.
 
 Supports:
-  - generate_code(prompt)  → LLMResult   [original, unchanged]
-  - generate_fix(issue, action, prompt)  → LLMResult  [new]
+  - generate_code(prompt)  -> LLMResult   [original, unchanged]
+  - generate_fix(issue, action, prompt)  -> LLMResult  [new]
 
-Providers (tried in priority order):
-  1. Google Gemini
-  2. Groq
+Provider priority order:
+  1. Anthropic Claude (claude-sonnet-4-20250514)
+  2. Google Gemini (gemini-2.0-flash)
+  3. Groq (llama-3.3-70b-versatile)
+
+If a higher-priority provider fails, the service automatically falls back
+to the next available provider and logs the failure reason.
 """
 from __future__ import annotations
 
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -38,6 +43,7 @@ class LLMResult:
     parsed: dict[str, Any]
     raw: str = ""
     confidence: float = 1.0   # propagated from RL when set externally
+    latency_ms: float = 0.0   # time taken for the LLM call
 
 
 # ---------------------------------------------------------------------------
@@ -47,6 +53,18 @@ class LLMResult:
 class LLMService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        # Log which providers are available at startup
+        providers = []
+        if settings.claude_api_key:
+            providers.append(f"Claude ({settings.claude_model})")
+        if settings.gemini_api_key:
+            providers.append(f"Gemini ({settings.gemini_model})")
+        if settings.groq_api_key:
+            providers.append(f"Groq ({settings.groq_model})")
+        if providers:
+            logger.info("llm: available providers (priority order): %s", " -> ".join(providers))
+        else:
+            logger.warning("llm: NO LLM providers configured - fix generation will fail")
 
     # ------------------------------------------------------------------
     # Public: original API (unchanged)
@@ -55,7 +73,7 @@ class LLMService:
     def generate_code(self, prompt: str) -> LLMResult:
         """
         Generate code / a fix using the configured LLM providers.
-        Tries Gemini first, then Groq as fallback.
+        Tries Claude first, then Gemini, then Groq as fallback.
         Returns an LLMResult with *parsed* being a dict.
         """
         return self._call_with_fallback(prompt)
@@ -96,25 +114,102 @@ class LLMService:
             result.parsed["changes"] = []
 
         logger.info(
-            "generate_fix: provider=%s action=%s type=%s changes=%d",
+            "generate_fix: provider=%s action=%s type=%s changes=%d latency=%dms",
             result.provider, action,
             issue.get("type", "unknown"),
             len(result.parsed.get("changes", [])),
+            int(result.latency_ms),
+        )
+        return result
+
+    def generate_fix_from_finding(
+        self,
+        finding: dict[str, Any],
+        file_content: str,
+        action: str = "",
+    ) -> LLMResult:
+        """
+        Generate a fix using the vulnerability-specific prompt template registered
+        in scanner.VULN_PATTERNS for this finding type.
+
+        This produces far more accurate fixes than the generic prompt because
+        each template contains the exact remediation steps for the vulnerability.
+
+        Parameters
+        ----------
+        finding:      A finding dict from scan_repository().
+        file_content: Current source code of the affected file.
+        action:       RL-chosen fix strategy label (for logging only).
+        """
+        # Import here to avoid circular import at module top level
+        from scanner import get_fix_prompt  # noqa: PLC0415
+
+        prompt = get_fix_prompt(finding, file_content)
+        result = self._call_with_fallback(prompt)
+
+        if "changes" not in result.parsed:
+            result.parsed["changes"] = []
+
+        logger.info(
+            "generate_fix_from_finding: provider=%s vuln_type=%s action=%s latency=%dms",
+            result.provider,
+            finding.get("type", "unknown"),
+            action or "auto",
+            int(result.latency_ms),
+        )
+        return result
+
+    def generate_secret_fix(
+        self,
+        finding: dict[str, Any],
+        file_content: str = "",
+        action: str = "move_to_env",
+    ) -> LLMResult:
+        """
+        Generate a deep-research fix for an exposed secret/credential finding.
+
+        Uses the ``fix_prompt_template`` from secret_scanner.SECRET_PATTERNS
+        which includes service-specific steps: rotate the key, audit usage logs,
+        purge from git history, and replace with environment variables.
+
+        Parameters
+        ----------
+        finding:      A finding dict from scan_secrets().
+        file_content: Current source of the affected file (optional but recommended).
+        action:       RL fix strategy label (for logging only).
+        """
+        from secret_scanner import get_secret_fix_prompt  # noqa: PLC0415
+
+        prompt = get_secret_fix_prompt(finding, file_content)
+        result = self._call_with_fallback(prompt)
+
+        if "changes" not in result.parsed:
+            result.parsed["changes"] = []
+
+        logger.info(
+            "generate_secret_fix: provider=%s secret_type=%s action=%s latency=%dms",
+            result.provider,
+            finding.get("type", "unknown"),
+            action,
+            int(result.latency_ms),
         )
         return result
 
     def generate_issue_summary(self, issue: dict[str, Any]) -> str:
+
         """
         Quick LLM call to produce a one-sentence summary of a GitHub issue.
         Returns the summary string (falls back to the issue title on error).
         """
         prompt = (
             "Summarise the following GitHub issue in one sentence. "
-            "Return plain text — no JSON, no markdown.\n\n"
+            "Return plain text - no JSON, no markdown.\n\n"
             f"Title: {issue.get('title', '')}\n"
             f"Body:\n{(issue.get('body') or '')[:800]}\n"
         )
         try:
+            if self.settings.claude_api_key:
+                return self._call_claude_text(prompt)
             if self.settings.gemini_api_key:
                 return self._call_gemini_text(prompt)
             if self.settings.groq_api_key:
@@ -124,30 +219,116 @@ class LLMService:
         return issue.get("title", "No summary available.")
 
     # ------------------------------------------------------------------
-    # Internal: provider calls
+    # Internal: provider calls with fallback chain
     # ------------------------------------------------------------------
 
     def _call_with_fallback(self, prompt: str) -> LLMResult:
-        """Try Gemini → Groq and return the first successful result."""
+        """Try Claude -> Gemini -> Groq and return the first successful result."""
         errors: list[str] = []
 
+        # Priority 1: Claude (Anthropic)
+        if self.settings.claude_api_key:
+            try:
+                logger.info("llm: attempting Claude (%s)...", self.settings.claude_model)
+                start = time.time()
+                raw = self._call_claude(prompt)
+                latency = (time.time() - start) * 1000
+                logger.info("llm: Claude succeeded in %dms", int(latency))
+                return LLMResult(provider="claude", parsed=self._parse_json(raw), raw=raw, latency_ms=latency)
+            except Exception as exc:
+                errors.append(f"Claude: {exc}")
+                logger.warning("llm: Claude failed - %s. Falling back to next provider.", exc)
+
+        # Priority 2: Gemini
         if self.settings.gemini_api_key:
             try:
+                logger.info("llm: attempting Gemini (%s)...", self.settings.gemini_model)
+                start = time.time()
                 raw = self._call_gemini(prompt)
-                return LLMResult(provider="gemini", parsed=self._parse_json(raw), raw=raw)
+                latency = (time.time() - start) * 1000
+                logger.info("llm: Gemini succeeded in %dms", int(latency))
+                return LLMResult(provider="gemini", parsed=self._parse_json(raw), raw=raw, latency_ms=latency)
             except Exception as exc:
                 errors.append(f"Gemini: {exc}")
-                logger.warning("llm: Gemini failed — %s", exc)
+                logger.warning("llm: Gemini failed - %s. Falling back to next provider.", exc)
 
+        # Priority 3: Groq
         if self.settings.groq_api_key:
             try:
+                logger.info("llm: attempting Groq (%s)...", self.settings.groq_model)
+                start = time.time()
                 raw = self._call_groq(prompt)
-                return LLMResult(provider="groq", parsed=self._parse_json(raw), raw=raw)
+                latency = (time.time() - start) * 1000
+                logger.info("llm: Groq succeeded in %dms", int(latency))
+                return LLMResult(provider="groq", parsed=self._parse_json(raw), raw=raw, latency_ms=latency)
             except Exception as exc:
                 errors.append(f"Groq: {exc}")
-                logger.warning("llm: Groq failed — %s", exc)
+                logger.warning("llm: Groq failed - %s. No more providers available.", exc)
 
-        raise LLMError("; ".join(errors) or "No LLM provider is configured.")
+        raise LLMError("; ".join(errors) or "No LLM provider is configured. Set ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY.")
+
+    # ------------------------------------------------------------------
+    # Claude (Anthropic) provider
+    # ------------------------------------------------------------------
+
+    def _call_claude(self, prompt: str) -> str:
+        """Claude API call expecting JSON response."""
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": self.settings.claude_api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": self.settings.claude_model,
+                "max_tokens": 4096,
+                "temperature": 0.1,
+                "system": "You are a code generation assistant. Return valid JSON only. Do not wrap in markdown backticks.",
+                "messages": [
+                    {"role": "user", "content": prompt},
+                ],
+            },
+            timeout=120,
+        )
+        response.raise_for_status()
+        data = response.json()
+        content = data.get("content", [])
+        if not content:
+            raise LLMError("Claude returned no content.")
+        text = "".join(block.get("text", "") for block in content if block.get("type") == "text").strip()
+        if not text:
+            raise LLMError("Claude returned an empty response.")
+        return text
+
+    def _call_claude_text(self, prompt: str) -> str:
+        """Claude call for plain-text (non-JSON) responses."""
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": self.settings.claude_api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": self.settings.claude_model,
+                "max_tokens": 1024,
+                "temperature": 0.2,
+                "messages": [
+                    {"role": "user", "content": prompt},
+                ],
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        content = response.json().get("content", [])
+        if not content:
+            raise LLMError("Claude returned no content.")
+        return "".join(block.get("text", "") for block in content if block.get("type") == "text").strip()
+
+    # ------------------------------------------------------------------
+    # Gemini provider
+    # ------------------------------------------------------------------
 
     def _call_gemini(self, prompt: str) -> str:
         url = (
@@ -191,6 +372,10 @@ class LLMService:
             raise LLMError("Gemini returned no candidates.")
         parts = candidates[0].get("content", {}).get("parts", [])
         return "".join(part.get("text", "") for part in parts).strip()
+
+    # ------------------------------------------------------------------
+    # Groq provider
+    # ------------------------------------------------------------------
 
     def _call_groq(self, prompt: str) -> str:
         response = requests.post(
@@ -265,7 +450,7 @@ class LLMService:
             )
         else:
             context = (
-                f"Security Finding — {issue.get('type')}\n"
+                f"Security Finding - {issue.get('type')}\n"
                 f"Severity: {issue.get('severity')} | File: {issue.get('file', 'N/A')} "
                 f"(line {issue.get('line', 'N/A')})\n"
                 f"Description: {issue.get('description', '')}\n"
@@ -275,14 +460,15 @@ class LLMService:
         return (
             "You are OpenDev AI, an autonomous security and code-quality remediation agent.\n"
             "Generate a minimal, production-safe fix using the strategy specified below.\n"
-            "Return JSON ONLY — no markdown, no explanation outside the JSON.\n\n"
+            "Return JSON ONLY - no markdown, no explanation outside the JSON.\n\n"
             "Required JSON shape:\n"
             "{\n"
             '  "summary":        "one-sentence fix description",\n'
             '  "commit_message": "conventional commit message",\n'
             '  "pr_title":       "pull request title",\n'
-            '  "pr_body":        "pull request markdown body",\n'
+            '  "pr_body":        "detailed pull request markdown body explaining what was changed and why",\n'
             '  "confidence":     0.0-1.0,\n'
+            '  "impact_analysis": "brief analysis of what this change affects and potential side effects",\n'
             '  "changes": [\n'
             '    {\n'
             '      "path":    "relative/file/path",\n'
@@ -295,7 +481,9 @@ class LLMService:
             "- Fix ONLY the described issue; leave all other code unchanged.\n"
             "- Match the file's existing coding style and indentation exactly.\n"
             "- If you cannot generate a safe fix, return an empty 'changes' list.\n"
-            "- Never introduce new external dependencies.\n\n"
+            "- Never introduce new external dependencies.\n"
+            "- Ensure the fix does NOT break any existing functionality.\n"
+            "- Include a detailed pr_body explaining the root cause, what was changed, and how it was tested.\n\n"
             f"Fix strategy: {action}\n"
             f"Strategy guidance: {action_desc}\n\n"
             f"Finding:\n{context}"

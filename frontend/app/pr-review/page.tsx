@@ -68,7 +68,7 @@ export default function PRReviewPage() {
                 value={repoUrl}
                 onChange={(e) => setRepoUrl(e.target.value)}
                 placeholder="https://github.com/owner/repo"
-                className="w-full rounded-2xl border-2 border-border bg-white px-4 py-3 font-mono text-sm text-text outline-none transition focus:border-primary"
+                className="w-full rounded-2xl border-2 border-border bg-card px-4 py-3 font-mono text-sm text-text outline-none transition focus:border-primary"
               />
             </label>
 
@@ -80,7 +80,7 @@ export default function PRReviewPage() {
                 value={prNumber}
                 onChange={(e) => setPrNumber(e.target.value)}
                 placeholder="123"
-                className="w-full rounded-2xl border-2 border-border bg-white px-4 py-3 font-mono text-sm text-text outline-none transition focus:border-primary"
+                className="w-full rounded-2xl border-2 border-border bg-card px-4 py-3 font-mono text-sm text-text outline-none transition focus:border-primary"
               />
             </label>
 
@@ -98,13 +98,13 @@ export default function PRReviewPage() {
               type="button"
               disabled={loading || !repoUrl || !prNumber}
               onClick={handleReview}
-              className="rounded-full border-2 border-border bg-primary px-5 py-3 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-border transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:shadow-none disabled:opacity-60"
+              className="rounded-full border-2 border-border bg-primary px-5 py-3 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-shadow-color transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:shadow-none disabled:opacity-60"
             >
               {loading ? "Analysing PR…" : "Analyse pull request"}
             </button>
 
             {error && (
-              <p className="rounded-2xl border-2 border-danger bg-white p-4 font-mono text-sm text-danger">{error}</p>
+              <p className="rounded-2xl border-2 border-danger bg-card p-4 font-mono text-sm text-danger">{error}</p>
             )}
           </div>
         </Panel>
@@ -124,13 +124,13 @@ export default function PRReviewPage() {
               </div>
               <p className="font-mono text-sm leading-7 text-muted">{review.summary}</p>
               {reviewData?.post_result?.posted && (
-                <p className="font-mono text-xs text-[#15803d]">✓ Review posted to GitHub</p>
+                <p className="font-mono text-xs text-success">✓ Review posted to GitHub</p>
               )}
               {review.positives && review.positives.length > 0 && (
                 <div className="space-y-1">
                   <p className="font-mono text-xs uppercase tracking-[0.25em] text-muted">Positives</p>
                   {review.positives.map((p, i) => (
-                    <p key={i} className="font-mono text-xs text-[#15803d]">✓ {p}</p>
+                    <p key={i} className="font-mono text-xs text-success">✓ {p}</p>
                   ))}
                 </div>
               )}
@@ -148,7 +148,7 @@ export default function PRReviewPage() {
         <>
           {/* PR info */}
           <Panel title={`PR #${pr.number}: ${pr.title}`} eyebrow={`by ${pr.author}`}
-            actions={<a href={pr.url} target="_blank" rel="noreferrer" className="rounded-full border-2 border-border bg-white px-3 py-1 font-mono text-xs uppercase tracking-[0.25em] text-text transition hover:-translate-y-0.5">View ↗</a>}
+            actions={<a href={pr.url} target="_blank" rel="noreferrer" className="rounded-full border-2 border-border bg-card px-3 py-1 font-mono text-xs uppercase tracking-[0.25em] text-text transition hover:-translate-y-0.5">View ↗</a>}
           >
             <div className="space-y-4 font-mono text-sm">
               <div className="flex flex-wrap gap-2">
@@ -173,7 +173,7 @@ export default function PRReviewPage() {
             <Panel title={`Issues found (${review.issues.length})`} eyebrow="Code review">
               <div className="space-y-4">
                 {review.issues.map((issue, i) => (
-                  <div key={i} className="rounded-[20px] border-2 border-border bg-white p-4 space-y-3">
+                  <div key={i} className="rounded-[20px] border-2 border-border bg-card p-4 space-y-3">
                     <div className="flex flex-wrap gap-2">
                       <StatusPill label={issue.severity} tone={sevTone(issue.severity)} />
                       <StatusPill label={issue.category} tone="neutral" />
@@ -200,7 +200,7 @@ export default function PRReviewPage() {
           <Panel title={`Changed files (${pr.changed_files.length})`} eyebrow="Diff summary">
             <div className="space-y-2">
               {pr.changed_files.map((f) => (
-                <div key={f.filename} className="flex items-center justify-between rounded-[14px] border-2 border-border bg-white p-3">
+                <div key={f.filename} className="flex items-center justify-between rounded-[14px] border-2 border-border bg-card p-3">
                   <span className="font-mono text-xs text-text truncate flex-1 mr-4">{f.filename}</span>
                   <div className="flex gap-2 shrink-0">
                     <StatusPill label={`+${f.additions}`} tone="success" />

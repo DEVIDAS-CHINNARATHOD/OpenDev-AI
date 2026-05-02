@@ -54,6 +54,38 @@ _TYPE_LABELS: dict[str, str] = {
 }
 
 
+def _get_remediation_guidance(finding_type: str) -> str:
+    """Return remediation guidance for common vulnerability types."""
+    guidance = {
+        "sql_injection": "Use parameterized queries or an ORM instead of string concatenation. Never interpolate user input directly into SQL statements.",
+        "xss": "Sanitize and escape all user-supplied data before rendering. Use framework-provided escaping (e.g., React's JSX auto-escaping, Django's template engine).",
+        "command_injection": "Avoid passing user input to shell commands. Use subprocess with argument lists instead of shell=True. Validate and sanitize all inputs.",
+        "path_traversal": "Validate file paths against a whitelist or base directory. Use os.path.realpath() to resolve symlinks and reject paths containing '..'.",
+        "ssrf": "Validate and whitelist URLs before making outbound requests. Block requests to internal/private IP ranges (10.x, 172.16.x, 192.168.x, 127.x).",
+        "prototype_pollution": "Avoid using Object.assign or spread operators with untrusted input. Use Object.create(null) for lookup objects.",
+        "insecure_deserialization": "Never deserialize untrusted data. Use safe alternatives like json.loads() instead of pickle.loads() or yaml.safe_load() instead of yaml.load().",
+        "weak_cryptography": "Replace MD5/SHA1 with SHA-256 or SHA-3. Use crypto.getRandomValues() or secrets module instead of Math.random() for security-sensitive operations.",
+        "jwt_bypass": "Always verify JWT signatures using a library. Never decode without verification. Set appropriate expiration times.",
+        "xxe": "Disable external entity processing in XML parsers. Use defusedxml library in Python or configure SAXParserFactory.setFeature() in Java.",
+        "open_redirect": "Validate redirect URLs against a whitelist. Only allow relative paths or specific trusted domains.",
+        "hardcoded_credentials": "Move secrets to environment variables or a secrets manager. Never commit passwords, API keys, or tokens to source control.",
+        "cors_misconfiguration": "Remove Access-Control-Allow-Origin: * from production. Whitelist specific trusted origins.",
+        "nosql_injection": "Sanitize query inputs. Avoid passing raw user input to MongoDB query operators like $where, $gt, $regex.",
+        "template_injection": "Never pass user input directly to template engines. Use sandboxed template rendering.",
+    }
+    return guidance.get(finding_type, "")
+
+
+def _get_impact_description(severity: str) -> str:
+    """Return impact description based on severity level."""
+    impacts = {
+        "high": "This is a **high-severity** finding that could lead to data breaches, unauthorized access, or remote code execution if exploited. Immediate remediation is strongly recommended.",
+        "medium": "This is a **medium-severity** finding that may enable partial information disclosure or limited unauthorized actions. Should be addressed in the current development cycle.",
+        "low": "This is a **low-severity** finding that represents a minor security concern or code quality issue. Can be addressed during routine maintenance.",
+    }
+    return impacts.get(severity.lower(), "")
+
+
 class GitHubService:
     def __init__(
         self,
@@ -128,6 +160,18 @@ class GitHubService:
                 break
         return issues
 
+    def get_existing_issue_titles(self, repo_url: str, label: str = "opendev-ai") -> set[str]:
+        """
+        Fetch all open issue titles that carry the given label.
+        Used for duplicate detection before creating new issues.
+        """
+        repo = self._get_repo(repo_url)
+        try:
+            issues = repo.get_issues(state="open", labels=[label])
+            return {issue.title for issue in issues}
+        except Exception:
+            return set()
+
     def create_issue(
         self,
         repo_url: str,
@@ -138,18 +182,34 @@ class GitHubService:
     ) -> dict:
         """
         Open a new GitHub issue in the target repository.
-        Ensures labels exist before assigning them.
+
+        Labels are created on-demand if they don't exist. If label creation
+        or assignment fails (e.g. token lacks admin scope on a public repo)
+        the issue is still created without labels so findings are never lost.
         """
         repo = self._get_repo(repo_url)
+
+        # Collect valid label objects — skip anything that fails
         label_objects = []
         for label_name in labels or []:
-            label_objects.append(self._ensure_label(repo, label_name))
+            lbl = self._ensure_label(repo, label_name)
+            if lbl is not None:
+                label_objects.append(lbl)
 
-        issue = repo.create_issue(
-            title=title,
-            body=body,
-            labels=label_objects or [],
-        )
+        # First attempt: with labels
+        try:
+            issue = repo.create_issue(
+                title=title,
+                body=body,
+                labels=label_objects or [],
+            )
+        except GithubException as exc:
+            # Labels may have caused the failure — retry without them
+            logger.warning(
+                "create_issue: label error (%s), retrying without labels", exc.data
+            )
+            issue = repo.create_issue(title=title, body=body)
+
         logger.info("create_issue: opened #%d in %s", issue.number, repo.full_name)
         return {
             "number": issue.number,
@@ -209,9 +269,27 @@ class GitHubService:
                 "",
             ]
 
+        # Remediation guidance based on finding type
+        remediation = _get_remediation_guidance(finding_type)
+        if remediation:
+            body_lines += [
+                "### Remediation guidance",
+                remediation,
+                "",
+            ]
+
+        # Security impact description
+        impact = _get_impact_description(severity)
+        if impact:
+            body_lines += [
+                "### Impact",
+                impact,
+                "",
+            ]
+
         body_lines += [
             "---",
-            "_Automatically detected by [OpenDev AI](https://github.com/opendev-ai) security scanner._",
+            "_Automatically detected by OpenDev AI security scanner._",
         ]
 
         # ---- Labels -------------------------------------------------------
@@ -254,6 +332,18 @@ class GitHubService:
         """
         repo = self._get_repo(repo_url)
         me = self.get_authenticated_user()
+
+        # If the user already owns the repository, return it directly.
+        # You cannot fork your own repository.
+        if repo.owner.login == me:
+            logger.info("fork_repository: User already owns %s, skipping fork.", repo.full_name)
+            return {
+                "full_name": repo.full_name,
+                "clone_url": repo.clone_url,
+                "html_url": repo.html_url,
+                "owner": me,
+                "already_existed": True,
+            }
 
         # Check if fork already exists
         existing_fork = self._find_existing_fork(repo, me)
@@ -445,7 +535,14 @@ class GitHubService:
         return None
 
     def _ensure_label(self, repo, label_name: str):
-        """Get or create a label on *repo*."""
+        """
+        Get or create a GitHub label on *repo*.
+
+        Returns the label object on success, or None if both get and create
+        fail (e.g. the token lacks the required admin/write scope). The caller
+        is responsible for filtering out None values before passing labels to
+        repo.create_issue().
+        """
         try:
             return repo.get_label(label_name)
         except GithubException:
@@ -454,5 +551,9 @@ class GitHubService:
             )
             try:
                 return repo.create_label(label_name, colour)
-            except GithubException:
-                return label_name  # PyGithub also accepts raw strings
+            except GithubException as exc:
+                logger.warning(
+                    "_ensure_label: could not create label '%s': %s",
+                    label_name, exc.data,
+                )
+                return None  # caller will skip this label

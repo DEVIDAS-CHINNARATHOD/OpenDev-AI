@@ -156,6 +156,8 @@ export type ActionResult = {
   security_score?: SecurityScore;
   create_issues_available?: boolean;
   fork_full_name?: string;
+  llm_provider?: string;
+  llm_latency_ms?: number;
 };
 
 export type AppState = {

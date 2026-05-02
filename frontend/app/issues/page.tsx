@@ -28,7 +28,7 @@ export default function IssuesPage() {
       <Panel title="No repository session" eyebrow="Issues">
         <div className="space-y-4 font-mono text-sm text-muted">
           <p>Start from the home page first.</p>
-          <Link href="/" className="inline-flex rounded-full border-2 border-border bg-primary px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-border">
+          <Link href="/" className="inline-flex rounded-full border-2 border-border bg-primary px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-shadow-color">
             Go home
           </Link>
         </div>
@@ -65,10 +65,10 @@ export default function IssuesPage() {
           <div className="space-y-4 font-mono text-sm text-muted">
             <p>This repository has no open issues. Run a security scan to find vulnerabilities and exposed secrets.</p>
             <div className="flex flex-wrap gap-3">
-              <Link href="/scan" className="inline-flex rounded-full border-2 border-border bg-danger px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-border transition hover:-translate-y-0.5">
+              <Link href="/scan" className="inline-flex rounded-full border-2 border-border bg-danger px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-shadow-color transition hover:-translate-y-0.5">
                 Run security scan
               </Link>
-              <Link href="/pr-review" className="inline-flex rounded-full border-2 border-border bg-white px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-text shadow-[4px_4px_0px_0px] shadow-border transition hover:-translate-y-0.5">
+              <Link href="/pr-review" className="inline-flex rounded-full border-2 border-border bg-card px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-text shadow-[4px_4px_0px_0px] shadow-shadow-color transition hover:-translate-y-0.5">
                 Review a PR
               </Link>
             </div>
@@ -93,7 +93,7 @@ export default function IssuesPage() {
               <div
                 key={issue.number}
                 className={`rounded-[20px] border-2 p-4 transition ${
-                  isSelected ? "border-primary bg-primary-soft" : "border-border bg-white"
+                  isSelected ? "border-primary bg-primary-soft" : "border-border bg-card"
                 }`}
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -117,7 +117,7 @@ export default function IssuesPage() {
                       href={issue.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="rounded-full border-2 border-border bg-white px-3 py-1.5 font-mono text-xs uppercase tracking-[0.25em] text-text transition hover:-translate-y-0.5"
+                      className="rounded-full border-2 border-border bg-card px-3 py-1.5 font-mono text-xs uppercase tracking-[0.25em] text-text transition hover:-translate-y-0.5"
                     >
                       View ↗
                     </a>
@@ -125,7 +125,7 @@ export default function IssuesPage() {
                       type="button"
                       disabled={loadingIssue !== null}
                       onClick={() => handleForkFix(issue)}
-                      className="rounded-full border-2 border-border bg-primary px-4 py-1.5 font-mono text-xs uppercase tracking-[0.25em] text-white shadow-[3px_3px_0px_0px] shadow-border transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-surface-strong disabled:text-muted disabled:shadow-none"
+                      className="rounded-full border-2 border-border bg-primary px-4 py-1.5 font-mono text-xs uppercase tracking-[0.25em] text-white shadow-[3px_3px_0px_0px] shadow-shadow-color transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-surface-strong disabled:text-muted disabled:shadow-none"
                     >
                       {isLoading ? "Fixing…" : "🔀 Fork & Fix"}
                     </button>
@@ -136,7 +136,7 @@ export default function IssuesPage() {
           })}
 
           {error && (
-            <p className="rounded-2xl border-2 border-danger bg-white p-4 font-mono text-sm text-danger">{error}</p>
+            <p className="rounded-2xl border-2 border-danger bg-card p-4 font-mono text-sm text-danger">{error}</p>
           )}
         </div>
       </Panel>
@@ -156,7 +156,7 @@ export default function IssuesPage() {
             </div>
             <p className="leading-7">{state.repo.description ?? "No description."}</p>
             <div className="flex flex-wrap gap-2">
-              <Link href="/analyze" className="rounded-full border-2 border-border bg-white px-3 py-1 text-xs uppercase tracking-[0.25em] text-text transition hover:-translate-y-0.5">
+              <Link href="/analyze" className="rounded-full border-2 border-border bg-card px-3 py-1 text-xs uppercase tracking-[0.25em] text-text transition hover:-translate-y-0.5">
                 ← Analysis
               </Link>
               <Link href="/scan" className="rounded-full border-2 border-border bg-danger px-3 py-1 text-xs uppercase tracking-[0.25em] text-white transition hover:-translate-y-0.5">

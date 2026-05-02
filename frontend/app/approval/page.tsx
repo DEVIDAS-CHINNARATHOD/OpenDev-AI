@@ -27,7 +27,7 @@ export default function ApprovalPage() {
       <Panel title="No approval context" eyebrow="Approval">
         <div className="space-y-4 font-mono text-sm text-muted">
           <p>Run a fix or security scan before attempting approval.</p>
-          <Link href="/" className="inline-flex rounded-full border-2 border-border bg-primary px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-border">
+          <Link href="/" className="inline-flex rounded-full border-2 border-border bg-primary px-4 py-2 font-mono text-sm uppercase tracking-[0.25em] text-white shadow-[4px_4px_0px_0px] shadow-shadow-color">
             Go home
           </Link>
         </div>
@@ -92,7 +92,7 @@ export default function ApprovalPage() {
           />
 
           {error && (
-            <p className="rounded-2xl border-2 border-danger bg-white p-4 font-mono text-sm text-danger">
+            <p className="rounded-2xl border-2 border-danger bg-card p-4 font-mono text-sm text-danger">
               {error}
             </p>
           )}
@@ -121,10 +121,10 @@ export default function ApprovalPage() {
             )}
 
             <div className="flex flex-wrap gap-3">
-              <Link href="/logs" className="rounded-full border-2 border-border bg-white px-4 py-2 text-xs uppercase tracking-[0.25em] text-text transition hover:-translate-y-0.5">
+              <Link href="/logs" className="rounded-full border-2 border-border bg-card px-4 py-2 text-xs uppercase tracking-[0.25em] text-text transition hover:-translate-y-0.5">
                 View logs
               </Link>
-              <Link href="/result" className="rounded-full border-2 border-border bg-primary px-4 py-2 text-xs uppercase tracking-[0.25em] text-white shadow-[3px_3px_0px_0px] shadow-border transition hover:-translate-y-0.5">
+              <Link href="/result" className="rounded-full border-2 border-border bg-primary px-4 py-2 text-xs uppercase tracking-[0.25em] text-white shadow-[3px_3px_0px_0px] shadow-shadow-color transition hover:-translate-y-0.5">
                 View result
               </Link>
             </div>
